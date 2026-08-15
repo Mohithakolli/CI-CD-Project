@@ -47,6 +47,11 @@ jobs:
           script: |
             set -e
             mkdir -p ~/deploy-this
+            # If a directory accidentally exists at ~/deploy.tar.gz, remove it
+            if [ -d ~/deploy.tar.gz ]; then
+              echo "Found directory at ~/deploy.tar.gz — removing to allow tar extraction"
+              rm -rf ~/deploy.tar.gz
+            fi
             tar -xzf ~/deploy.tar.gz -C ~/deploy-this
 
             # Install Node if missing (uses NodeSource for Node 18 LTS)
