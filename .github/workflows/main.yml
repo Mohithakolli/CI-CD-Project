@@ -35,7 +35,8 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.EC2_PORT || '22' }}
           source: "deploy.tar.gz"
-          target: "~/deploy.tar.gz"
+          # Use explicit absolute path to avoid confusion with shell expansion
+          target: "/home/${{ secrets.EC2_USER }}/deploy.tar.gz"
 
       - name: Deploy on EC2
         uses: appleboy/ssh-action@master
@@ -51,6 +52,15 @@ jobs:
             if [ -d ~/deploy.tar.gz ]; then
               echo "Found directory at ~/deploy.tar.gz — removing to allow tar extraction"
               rm -rf ~/deploy.tar.gz
+            fi
+            # Diagnostic: show what's in the home dir and file type if present
+            echo "Listing home directory before extraction:"; ls -la ~/
+            if [ -f ~/deploy.tar.gz ]; then
+              echo "deploy.tar.gz exists; file info:"; file ~/deploy.tar.gz || true
+            else
+              echo "Error: ~/deploy.tar.gz not found on remote. Aborting and listing home dir for debugging.";
+              ls -la ~/
+              exit 1
             fi
             tar -xzf ~/deploy.tar.gz -C ~/deploy-this
 
