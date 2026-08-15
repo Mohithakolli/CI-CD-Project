@@ -35,8 +35,19 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.EC2_PORT || '22' }}
           source: "deploy.tar.gz"
-          # Use explicit absolute path to avoid confusion with shell expansion
-          target: "/home/${{ secrets.EC2_USER }}/deploy.tar.gz"
+          # Copy into the remote home directory (as a directory) so scp preserves filename
+          target: "/home/${{ secrets.EC2_USER }}/"
+
+      - name: Verify artifact on EC2
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.EC2_PORT || '22' }}
+          script: |
+            echo "Listing uploaded artifact:"; ls -la /home/${{ secrets.EC2_USER }}/deploy.tar.gz || true
+            echo "File type info (if present):"; file /home/${{ secrets.EC2_USER }}/deploy.tar.gz || true
 
       - name: Deploy on EC2
         uses: appleboy/ssh-action@master
