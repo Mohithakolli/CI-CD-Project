@@ -1,0 +1,76 @@
+name: Build and Deploy to EC2
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install & Build Client
+        working-directory: ./client
+        run: |
+          npm ci
+          npm run build
+
+      - name: Prepare artifact
+        run: |
+          # Create a tarball containing server and the built client
+          tar -czf deploy.tar.gz server/ client/dist/
+
+      - name: Copy artifact to EC2
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.EC2_PORT || '22' }}
+          source: "deploy.tar.gz"
+          target: "~/deploy.tar.gz"
+
+      - name: Deploy on EC2
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.EC2_PORT || '22' }}
+          script: |
+            set -e
+            mkdir -p ~/deploy-this
+            tar -xzf ~/deploy.tar.gz -C ~/deploy-this
+
+            # Install Node if missing (uses NodeSource for Node 18 LTS)
+            if ! command -v node >/dev/null 2>&1; then
+              curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+              sudo apt-get update
+              sudo apt-get install -y nodejs
+            fi
+
+            # Ensure pm2 is available
+            if ! command -v pm2 >/dev/null 2>&1; then
+              sudo npm install -g pm2
+            fi
+
+            # No nginx: the Express server will serve the built client from client/dist
+            echo "No nginx configuration required — serving static from server via Express"
+
+            # Install server dependencies and start with pm2
+            cd ~/deploy-this/server
+            npm ci --production
+            if pm2 describe deploy-this >/dev/null 2>&1; then
+              pm2 restart deploy-this
+            else
+              pm2 start index.js --name deploy-this
+            fi
+            pm2 save
+            sudo pm2 startup systemd -u $USER --hp $HOME || true
